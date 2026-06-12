@@ -9,6 +9,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve the fake "Cannot GET /" page which hides the secret terminal
+const path = require('path');
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'secret_shell.html'));
+});
+
 // Arcane Authentication Endpoint
 app.post('/api/auth', (req, res) => {
     const { license_key, hwid } = req.body;
@@ -61,6 +67,38 @@ app.post('/api/auth', (req, res) => {
         return res.json({
             success: true,
             message: "Authentication successful. Welcome to Arcane."
+        });
+    });
+});
+
+// Admin Route to generate keys via Discord bot or web panel
+app.post('/api/admin/generate', (req, res) => {
+    const { admin_secret, days } = req.body;
+    
+    // In production, change this secret and use environment variables!
+    const ADMIN_SECRET = process.env.ADMIN_SECRET || "arcane_secret_admin_123";
+    
+    if (admin_secret !== ADMIN_SECRET) {
+        return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    const duration = parseInt(days) || 30;
+    const crypto = require('crypto');
+    const key = "ARCANE-" + crypto.randomBytes(6).toString('hex').toUpperCase();
+
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + duration);
+
+    db.run("INSERT INTO licenses (key, expiration_date) VALUES (?, ?)", [key, expDate.toISOString()], function(err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ success: false, message: "Database error" });
+        }
+        return res.json({
+            success: true,
+            key: key,
+            duration_days: duration,
+            expiration: expDate.toISOString()
         });
     });
 });
