@@ -11,6 +11,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT UNIQUE NOT NULL,
             hwid TEXT,
+            discord_id TEXT,
+            discord_username TEXT,
+            discord_avatar TEXT,
             is_banned INTEGER DEFAULT 0,
             expiration_date TEXT
         )`, (err) => {

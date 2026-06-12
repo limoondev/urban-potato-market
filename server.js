@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
 const db = require('./database');
 
 const app = express();
@@ -66,14 +67,16 @@ app.post('/api/auth', (req, res) => {
 
         return res.json({
             success: true,
-            message: "Authentication successful. Welcome to Arcane."
+            message: "Authentication successful. Welcome to Arcane.",
+            discord_username: row.discord_username || "User",
+            discord_avatar: row.discord_avatar || ""
         });
     });
 });
 
 // Admin Route to generate keys via Discord bot or web panel
-app.post('/api/admin/generate', (req, res) => {
-    const { admin_secret, days } = req.body;
+app.post('/api/admin/generate', async (req, res) => {
+    const { admin_secret, days, discord_id } = req.body;
     
     // In production, change this secret and use environment variables!
     const ADMIN_SECRET = process.env.ADMIN_SECRET || "arcane_secret_admin_123";
@@ -89,7 +92,28 @@ app.post('/api/admin/generate', (req, res) => {
     const expDate = new Date();
     expDate.setDate(expDate.getDate() + duration);
 
-    db.run("INSERT INTO licenses (key, expiration_date) VALUES (?, ?)", [key, expDate.toISOString()], function(err) {
+    let discordUsername = "";
+    let discordAvatar = "";
+
+    if (discord_id) {
+        try {
+            // Use a public discord lookup API to get user info
+            const response = await axios.get(`https://discordlookup.mesalinc.com/v1/user/${discord_id}`);
+            if (response.data) {
+                discordUsername = response.data.username;
+                // Construct avatar URL
+                if (response.data.avatar) {
+                    const ext = response.data.avatar.startsWith('a_') ? 'gif' : 'png';
+                    discordAvatar = `https://cdn.discordapp.com/avatars/${discord_id}/${response.data.avatar}.${ext}?size=64`;
+                }
+            }
+        } catch (e) {
+            console.log("Could not fetch discord user:", e.message);
+        }
+    }
+
+    db.run("INSERT INTO licenses (key, discord_id, discord_username, discord_avatar, expiration_date) VALUES (?, ?, ?, ?, ?)", 
+        [key, discord_id || null, discordUsername || null, discordAvatar || null, expDate.toISOString()], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).json({ success: false, message: "Database error" });
@@ -98,7 +122,9 @@ app.post('/api/admin/generate', (req, res) => {
             success: true,
             key: key,
             duration_days: duration,
-            expiration: expDate.toISOString()
+            expiration: expDate.toISOString(),
+            discord_username: discordUsername,
+            discord_avatar: discordAvatar
         });
     });
 });
